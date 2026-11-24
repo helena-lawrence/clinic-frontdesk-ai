@@ -1,9 +1,10 @@
 data "aws_caller_identity" "current" {}
 
 locals {
-  region     = "eu-west-2"
-  public_url = "https://${aws_cloudfront_distribution.clinic.domain_name}"
-  db_secret  = aws_db_instance.clinic.master_user_secret[0].secret_arn
+  workload_boundary = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/ClinicWorkloadBoundary"
+  region            = "eu-west-2"
+  public_url        = "https://${aws_cloudfront_distribution.clinic.domain_name}"
+  db_secret         = aws_db_instance.clinic.master_user_secret[0].secret_arn
   db_settings = [
     { name = "AWS_REGION", value = local.region },
     { name = "DB_HOST", value = aws_db_instance.clinic.address },
@@ -63,7 +64,8 @@ resource "aws_cloudwatch_log_group" "init" {
 }
 
 resource "aws_iam_role" "execution" {
-  name = "clinic-frontdesk-managed-execution"
+  permissions_boundary = local.workload_boundary
+  name                 = "clinic-frontdesk-managed-execution"
   assume_role_policy = jsonencode({
     Version   = "2012-10-17"
     Statement = [{ Effect = "Allow", Principal = { Service = "ecs-tasks.amazonaws.com" }, Action = "sts:AssumeRole" }]
@@ -85,13 +87,15 @@ resource "aws_iam_role_policy" "database_secret" {
 }
 
 resource "aws_iam_role" "api" {
-  name               = "clinic-frontdesk-managed-api-task"
-  assume_role_policy = aws_iam_role.execution.assume_role_policy
+  permissions_boundary = local.workload_boundary
+  name                 = "clinic-frontdesk-managed-api-task"
+  assume_role_policy   = aws_iam_role.execution.assume_role_policy
 }
 
 resource "aws_iam_role" "ui" {
-  name               = "clinic-frontdesk-managed-ui-task"
-  assume_role_policy = aws_iam_role.execution.assume_role_policy
+  permissions_boundary = local.workload_boundary
+  name                 = "clinic-frontdesk-managed-ui-task"
+  assume_role_policy   = aws_iam_role.execution.assume_role_policy
 }
 
 resource "aws_iam_role_policy" "ui_models" {

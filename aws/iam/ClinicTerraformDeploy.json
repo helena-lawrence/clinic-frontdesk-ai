@@ -1,0 +1,347 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "CreateLogin",
+      "Effect": "Allow",
+      "Action": [
+        "cognito-idp:CreateUserPool",
+        "cognito-idp:DescribeUserPoolDomain",
+        "cognito-idp:ListUserPools"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "eu-west-2"
+        }
+      }
+    },
+    {
+      "Sid": "TagClinicPool",
+      "Effect": "Allow",
+      "Action": "cognito-idp:TagResource",
+      "Resource": "arn:aws:cognito-idp:eu-west-2:202506667107:userpool/*",
+      "Condition": {
+        "StringEquals": { "aws:RequestTag/Project": "clinic-frontdesk-managed" },
+        "ForAllValues:StringEquals": { "aws:TagKeys": "Project" }
+      }
+    },
+    {
+      "Sid": "ManageClinicLogin",
+      "Effect": "Allow",
+      "Action": [
+        "cognito-idp:DescribeUserPool",
+        "cognito-idp:GetUserPoolMfaConfig",
+        "cognito-idp:SetUserPoolMfaConfig",
+        "cognito-idp:UpdateUserPool",
+        "cognito-idp:CreateUserPoolClient",
+        "cognito-idp:DescribeUserPoolClient",
+        "cognito-idp:UpdateUserPoolClient",
+        "cognito-idp:CreateUserPoolDomain",
+        "cognito-idp:UpdateUserPoolDomain",
+        "cognito-idp:ListTagsForResource",
+        "cognito-idp:AdminGetUser",
+        "cognito-idp:AdminCreateUser"
+      ],
+      "Resource": "arn:aws:cognito-idp:eu-west-2:202506667107:userpool/*",
+      "Condition": {
+        "StringEquals": {
+          "aws:ResourceTag/Project": "clinic-frontdesk-managed"
+        }
+      }
+    },
+    {
+      "Sid": "RegistryLogin",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:GetAuthorizationToken"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "eu-west-2"
+        }
+      }
+    },
+    {
+      "Sid": "PublishImages",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:CreateRepository",
+        "ecr:DescribeRepositories",
+        "ecr:DescribeImages",
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:InitiateLayerUpload",
+        "ecr:UploadLayerPart",
+        "ecr:CompleteLayerUpload",
+        "ecr:PutImage",
+        "ecr:BatchGetImage",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:GetLifecyclePolicy",
+        "ecr:PutLifecyclePolicy",
+        "ecr:ListTagsForResource",
+        "ecr:PutImageScanningConfiguration",
+        "ecr:PutImageTagMutability"
+      ],
+      "Resource": "arn:aws:ecr:eu-west-2:202506667107:repository/clinic-frontdesk-managed-*"
+    },
+    {
+      "Sid": "LambdaImageAccess",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:GetRepositoryPolicy",
+        "ecr:SetRepositoryPolicy"
+      ],
+      "Resource": "arn:aws:ecr:eu-west-2:202506667107:repository/clinic-frontdesk-managed-predictor"
+    },
+    {
+      "Sid": "ManagePredictor",
+      "Effect": "Allow",
+      "Action": [
+        "lambda:CreateFunction",
+        "lambda:GetFunction",
+        "lambda:GetFunctionConfiguration",
+        "lambda:GetFunctionCodeSigningConfig",
+        "lambda:GetFunctionConcurrency",
+        "lambda:GetRuntimeManagementConfig",
+        "lambda:GetFunctionRecursionConfig",
+        "lambda:GetFunctionEventInvokeConfig",
+        "lambda:ListVersionsByFunction",
+        "lambda:ListTags",
+        "lambda:UpdateFunctionCode",
+        "lambda:UpdateFunctionConfiguration"
+      ],
+      "Resource": "arn:aws:lambda:eu-west-2:202506667107:function:clinic-frontdesk-managed-predictor"
+    },
+    {
+      "Sid": "ManageLogs",
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:PutRetentionPolicy",
+        "logs:ListTagsForResource",
+        "logs:ListTagsLogGroup"
+      ],
+      "Resource": [
+        "arn:aws:logs:eu-west-2:202506667107:log-group:/ecs/clinic-frontdesk-managed/*",
+        "arn:aws:logs:eu-west-2:202506667107:log-group:/ecs/clinic-frontdesk-managed/*:*",
+        "arn:aws:logs:eu-west-2:202506667107:log-group:/aws/lambda/clinic-frontdesk-managed-predictor",
+        "arn:aws:logs:eu-west-2:202506667107:log-group:/aws/lambda/clinic-frontdesk-managed-predictor:*"
+      ]
+    },
+    {
+      "Sid": "ReadLogGroups",
+      "Effect": "Allow",
+      "Action": [
+        "logs:DescribeLogGroups"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "eu-west-2"
+        }
+      }
+    },
+    {
+      "Sid": "ManageClusterAndServices",
+      "Effect": "Allow",
+      "Action": [
+        "ecs:CreateCluster",
+        "ecs:DescribeClusters",
+        "ecs:UpdateClusterSettings",
+        "ecs:CreateService",
+        "ecs:DescribeServices",
+        "ecs:UpdateService",
+        "ecs:ListServiceDeployments",
+        "ecs:DescribeServiceDeployments",
+        "ecs:DescribeServiceRevisions",
+        "ecs:ListTagsForResource",
+        "ecs:TagResource",
+        "ecs:UpdateCluster"
+      ],
+      "Resource": [
+        "arn:aws:ecs:eu-west-2:202506667107:cluster/clinic-frontdesk-managed",
+        "arn:aws:ecs:eu-west-2:202506667107:service/clinic-frontdesk-managed/*",
+        "arn:aws:ecs:eu-west-2:202506667107:service-deployment/clinic-frontdesk-managed/*",
+        "arn:aws:ecs:eu-west-2:202506667107:service-revision/clinic-frontdesk-managed/*",
+        "arn:aws:ecs:eu-west-2:202506667107:task-definition/clinic-frontdesk-managed-*:*",
+        "arn:aws:ecs:eu-west-2:202506667107:task-set/clinic-frontdesk-managed/*/*"
+      ]
+    },
+    {
+      "Sid": "RegisterTasks",
+      "Effect": "Allow",
+      "Action": [
+        "ecs:RegisterTaskDefinition",
+        "ecs:DeregisterTaskDefinition"
+      ],
+      "Resource": "arn:aws:ecs:eu-west-2:202506667107:task-definition/clinic-frontdesk-managed-*:*"
+    },
+    {
+      "Sid": "ReadTaskDefinitions",
+      "Effect": "Allow",
+      "Action": [
+        "ecs:DescribeTaskDefinition"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "eu-west-2"
+        }
+      }
+    },
+    {
+      "Sid": "StartClinicInitTask",
+      "Effect": "Allow",
+      "Action": [
+        "ecs:RunTask"
+      ],
+      "Resource": "arn:aws:ecs:eu-west-2:202506667107:task-definition/clinic-frontdesk-managed-init:*",
+      "Condition": {
+        "ArnEquals": {
+          "ecs:cluster": "arn:aws:ecs:eu-west-2:202506667107:cluster/clinic-frontdesk-managed"
+        }
+      }
+    },
+    {
+      "Sid": "WaitForInitTask",
+      "Effect": "Allow",
+      "Action": [
+        "ecs:DescribeTasks"
+      ],
+      "Resource": "arn:aws:ecs:eu-west-2:202506667107:task/clinic-frontdesk-managed/*"
+    },
+    {
+      "Sid": "ProvisionBoundedRoles",
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreateRole",
+        "iam:PutRolePermissionsBoundary"
+      ],
+      "Resource": [
+        "arn:aws:iam::202506667107:role/clinic-frontdesk-managed-execution",
+        "arn:aws:iam::202506667107:role/clinic-frontdesk-managed-api-task",
+        "arn:aws:iam::202506667107:role/clinic-frontdesk-managed-ui-task",
+        "arn:aws:iam::202506667107:role/clinic-frontdesk-managed-predictor"
+      ],
+      "Condition": {
+        "ArnEquals": {
+          "iam:PermissionsBoundary": "arn:aws:iam::202506667107:policy/ClinicWorkloadBoundary"
+        }
+      }
+    },
+    {
+      "Sid": "ReadWorkloadRoles",
+      "Effect": "Allow",
+      "Action": [
+        "iam:GetRole",
+        "iam:ListRolePolicies",
+        "iam:ListAttachedRolePolicies",
+        "iam:ListInstanceProfilesForRole",
+        "iam:ListRoleTags",
+        "iam:GetRolePolicy"
+      ],
+      "Resource": [
+        "arn:aws:iam::202506667107:role/clinic-frontdesk-managed-execution",
+        "arn:aws:iam::202506667107:role/clinic-frontdesk-managed-api-task",
+        "arn:aws:iam::202506667107:role/clinic-frontdesk-managed-ui-task",
+        "arn:aws:iam::202506667107:role/clinic-frontdesk-managed-predictor"
+      ]
+    },
+    {
+      "Sid": "ManageInlineWorkloadAccess",
+      "Effect": "Allow",
+      "Action": [
+        "iam:PutRolePolicy"
+      ],
+      "Resource": [
+        "arn:aws:iam::202506667107:role/clinic-frontdesk-managed-execution",
+        "arn:aws:iam::202506667107:role/clinic-frontdesk-managed-ui-task"
+      ],
+      "Condition": {
+        "ArnEquals": {
+          "iam:PermissionsBoundary": "arn:aws:iam::202506667107:policy/ClinicWorkloadBoundary"
+        }
+      }
+    },
+    {
+      "Sid": "AttachExecution",
+      "Effect": "Allow",
+      "Action": [
+        "iam:AttachRolePolicy"
+      ],
+      "Resource": "arn:aws:iam::202506667107:role/clinic-frontdesk-managed-execution",
+      "Condition": {
+        "ArnEquals": {
+          "iam:PolicyARN": "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+        }
+      }
+    },
+    {
+      "Sid": "AttachPredictor",
+      "Effect": "Allow",
+      "Action": [
+        "iam:AttachRolePolicy"
+      ],
+      "Resource": "arn:aws:iam::202506667107:role/clinic-frontdesk-managed-predictor",
+      "Condition": {
+        "ArnEquals": {
+          "iam:PolicyARN": "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+        }
+      }
+    },
+    {
+      "Sid": "PassEcsRoles",
+      "Effect": "Allow",
+      "Action": [
+        "iam:PassRole"
+      ],
+      "Resource": [
+        "arn:aws:iam::202506667107:role/clinic-frontdesk-managed-execution",
+        "arn:aws:iam::202506667107:role/clinic-frontdesk-managed-api-task",
+        "arn:aws:iam::202506667107:role/clinic-frontdesk-managed-ui-task"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": "ecs-tasks.amazonaws.com"
+        }
+      }
+    },
+    {
+      "Sid": "PassLambdaRole",
+      "Effect": "Allow",
+      "Action": [
+        "iam:PassRole"
+      ],
+      "Resource": "arn:aws:iam::202506667107:role/clinic-frontdesk-managed-predictor",
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": "lambda.amazonaws.com"
+        }
+      }
+    },
+    {
+      "Sid": "CreateServiceLinkedRoles",
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreateServiceLinkedRole"
+      ],
+      "Resource": [
+        "arn:aws:iam::202506667107:role/aws-service-role/ecs.amazonaws.com/AWSServiceRoleFor*",
+        "arn:aws:iam::202506667107:role/aws-service-role/rds.amazonaws.com/AWSServiceRoleFor*",
+        "arn:aws:iam::202506667107:role/aws-service-role/elasticloadbalancing.amazonaws.com/AWSServiceRoleFor*",
+        "arn:aws:iam::202506667107:role/aws-service-role/vpcorigin.cloudfront.amazonaws.com/AWSServiceRoleFor*"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "iam:AWSServiceName": [
+            "ecs.amazonaws.com",
+            "rds.amazonaws.com",
+            "elasticloadbalancing.amazonaws.com",
+            "vpcorigin.cloudfront.amazonaws.com"
+          ]
+        }
+      }
+    }
+  ]
+}

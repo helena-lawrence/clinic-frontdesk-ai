@@ -1,0 +1,211 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadRegionalNetwork",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:DescribeAvailabilityZones",
+        "ec2:DescribeManagedPrefixLists",
+        "ec2:GetManagedPrefixListEntries",
+        "ec2:DescribePrefixLists",
+        "ec2:DescribeInternetGateways",
+        "ec2:DescribeNetworkAcls",
+        "ec2:DescribeNetworkInterfaces",
+        "ec2:DescribeRouteTables",
+        "ec2:DescribeSecurityGroups",
+        "ec2:DescribeSecurityGroupRules",
+        "ec2:DescribeSubnets",
+        "ec2:DescribeTags",
+        "ec2:DescribeVpcs",
+        "ec2:DescribeVpcAttribute",
+        "ec2:DescribeVpcEndpoints",
+        "ec2:DescribeAccountAttributes",
+        "ec2:DescribeAddresses",
+        "ec2:DescribeInstances"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "eu-west-2"
+        }
+      }
+    },
+    {
+      "Sid": "ManageVpcNetwork",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:CreateVpc",
+        "ec2:ModifyVpcAttribute",
+        "ec2:CreateInternetGateway",
+        "ec2:AttachInternetGateway",
+        "ec2:CreateSubnet",
+        "ec2:ModifySubnetAttribute",
+        "ec2:CreateRouteTable",
+        "ec2:AssociateRouteTable",
+        "ec2:CreateRoute",
+        "ec2:ReplaceRoute",
+        "ec2:CreateSecurityGroup",
+        "ec2:AuthorizeSecurityGroupIngress",
+        "ec2:AuthorizeSecurityGroupEgress",
+        "ec2:RevokeSecurityGroupIngress",
+        "ec2:RevokeSecurityGroupEgress",
+        "ec2:ModifySecurityGroupRules",
+        "ec2:CreateTags"
+      ],
+      "Resource": [
+        "arn:aws:ec2:eu-west-2:202506667107:vpc/*",
+        "arn:aws:ec2:eu-west-2:202506667107:subnet/*",
+        "arn:aws:ec2:eu-west-2:202506667107:route-table/*",
+        "arn:aws:ec2:eu-west-2:202506667107:internet-gateway/*",
+        "arn:aws:ec2:eu-west-2:202506667107:security-group/*",
+        "arn:aws:ec2:eu-west-2:202506667107:security-group-rule/*"
+      ]
+    },
+    {
+      "Sid": "ReadLoadBalancers",
+      "Effect": "Allow",
+      "Action": [
+        "elasticloadbalancing:DescribeListeners",
+        "elasticloadbalancing:DescribeLoadBalancers",
+        "elasticloadbalancing:DescribeLoadBalancerAttributes",
+        "elasticloadbalancing:DescribeRules",
+        "elasticloadbalancing:DescribeTags",
+        "elasticloadbalancing:DescribeTargetGroups",
+        "elasticloadbalancing:DescribeTargetGroupAttributes",
+        "elasticloadbalancing:DescribeListenerAttributes",
+        "elasticloadbalancing:DescribeCapacityReservation",
+        "elasticloadbalancing:DescribeTargetHealth"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "eu-west-2"
+        }
+      }
+    },
+    {
+      "Sid": "ManageLoadBalancer",
+      "Effect": "Allow",
+      "Action": [
+        "elasticloadbalancing:CreateLoadBalancer",
+        "elasticloadbalancing:CreateTargetGroup",
+        "elasticloadbalancing:CreateListener",
+        "elasticloadbalancing:CreateRule",
+        "elasticloadbalancing:ModifyRule",
+        "elasticloadbalancing:ModifyListener",
+        "elasticloadbalancing:ModifyListenerAttributes",
+        "elasticloadbalancing:ModifyLoadBalancerAttributes",
+        "elasticloadbalancing:ModifyTargetGroup",
+        "elasticloadbalancing:ModifyTargetGroupAttributes",
+        "elasticloadbalancing:SetSecurityGroups",
+        "elasticloadbalancing:SetSubnets",
+        "elasticloadbalancing:AddTags"
+      ],
+      "Resource": [
+        "arn:aws:elasticloadbalancing:eu-west-2:202506667107:loadbalancer/app/clinic-frontdesk-managed/*",
+        "arn:aws:elasticloadbalancing:eu-west-2:202506667107:targetgroup/clinic-managed-*/*",
+        "arn:aws:elasticloadbalancing:eu-west-2:202506667107:listener/app/clinic-frontdesk-managed/*",
+        "arn:aws:elasticloadbalancing:eu-west-2:202506667107:listener-rule/app/clinic-frontdesk-managed/*"
+      ]
+    },
+    {
+      "Sid": "CreateCloudFront",
+      "Effect": "Allow",
+      "Action": [
+        "cloudfront:CreateDistribution",
+        "cloudfront:CreateVpcOrigin"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ManageCloudFront",
+      "Effect": "Allow",
+      "Action": [
+        "cloudfront:GetDistribution",
+        "cloudfront:GetDistributionConfig",
+        "cloudfront:GetVpcOrigin",
+        "cloudfront:UpdateVpcOrigin",
+        "cloudfront:UpdateDistribution",
+        "cloudfront:ListTagsForResource",
+        "cloudfront:TagResource"
+      ],
+      "Resource": [
+        "arn:aws:cloudfront::202506667107:distribution/*",
+        "arn:aws:cloudfront::202506667107:vpcorigin/*"
+      ]
+    },
+    {
+      "Sid": "ReadDatabase",
+      "Effect": "Allow",
+      "Action": [
+        "rds:DescribeDBInstances",
+        "rds:DescribeDBSubnetGroups",
+        "rds:DescribeDBEngineVersions",
+        "rds:DescribeOrderableDBInstanceOptions",
+        "rds:DescribePendingMaintenanceActions",
+        "rds:DescribeDBParameterGroups",
+        "rds:DescribeDBParameters",
+        "rds:DescribeDBSnapshots"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "eu-west-2"
+        }
+      }
+    },
+    {
+      "Sid": "ManageDatabase",
+      "Effect": "Allow",
+      "Action": [
+        "rds:CreateDBInstance",
+        "rds:ModifyDBInstance",
+        "rds:CreateDBSubnetGroup",
+        "rds:ModifyDBSubnetGroup",
+        "rds:ListTagsForResource",
+        "rds:AddTagsToResource"
+      ],
+      "Resource": [
+        "arn:aws:rds:eu-west-2:202506667107:db:clinic-frontdesk-managed-db",
+        "arn:aws:rds:eu-west-2:202506667107:subgrp:clinic-frontdesk-managed",
+        "arn:aws:rds:eu-west-2:202506667107:pg:default.postgres17",
+        "arn:aws:rds:eu-west-2:202506667107:og:default:postgres-17",
+        "arn:aws:rds:eu-west-2:202506667107:secgrp:default"
+      ]
+    },
+    {
+      "Sid": "ProvisionDatabaseCredential",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:CreateSecret",
+        "secretsmanager:TagResource"
+      ],
+      "Resource": "arn:aws:secretsmanager:eu-west-2:202506667107:secret:rds!db-*"
+    },
+    {
+      "Sid": "ManageDatabaseRotation",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:CancelRotateSecret",
+        "secretsmanager:ListSecretVersionIds",
+        "secretsmanager:RotateSecret"
+      ],
+      "Resource": "arn:aws:secretsmanager:eu-west-2:202506667107:secret:rds!db-*",
+      "Condition": {
+        "StringEquals": {
+          "secretsmanager:ResourceTag/aws:rds:primaryDBInstanceArn": "arn:aws:rds:eu-west-2:202506667107:db:clinic-frontdesk-managed-db"
+        }
+      }
+    },
+    {
+      "Sid": "DescribeRegionalKeys",
+      "Effect": "Allow",
+      "Action": [
+        "kms:DescribeKey"
+      ],
+      "Resource": "arn:aws:kms:eu-west-2:202506667107:key/*"
+    }
+  ]
+}

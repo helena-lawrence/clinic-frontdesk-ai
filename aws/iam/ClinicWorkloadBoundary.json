@@ -1,0 +1,72 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "EcrLogin",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:GetAuthorizationToken"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "eu-west-2"
+        }
+      }
+    },
+    {
+      "Sid": "ReadImages",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:BatchGetImage"
+      ],
+      "Resource": "arn:aws:ecr:eu-west-2:202506667107:repository/clinic-frontdesk-managed-*"
+    },
+    {
+      "Sid": "WriteApplicationLogs",
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+      ],
+      "Resource": [
+        "arn:aws:logs:eu-west-2:202506667107:log-group:/ecs/clinic-frontdesk-managed/*:log-stream:*",
+        "arn:aws:logs:eu-west-2:202506667107:log-group:/aws/lambda/clinic-frontdesk-managed-predictor:log-stream:*"
+      ]
+    },
+    {
+      "Sid": "DatabasePassword",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:GetSecretValue"
+      ],
+      "Resource": "arn:aws:secretsmanager:eu-west-2:202506667107:secret:rds!db-*",
+      "Condition": {
+        "StringEquals": {
+          "secretsmanager:ResourceTag/aws:rds:primaryDBInstanceArn": "arn:aws:rds:eu-west-2:202506667107:db:clinic-frontdesk-managed-db"
+        }
+      }
+    },
+    {
+      "Sid": "InvokeClinicModels",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock:InvokeModel"
+      ],
+      "Resource": [
+        "arn:aws:bedrock:eu-west-2::foundation-model/amazon.nova-lite-v1:0",
+        "arn:aws:bedrock:eu-west-2::foundation-model/amazon.titan-embed-text-v2:0"
+      ]
+    },
+    {
+      "Sid": "InvokeClinicPredictor",
+      "Effect": "Allow",
+      "Action": [
+        "lambda:InvokeFunction"
+      ],
+      "Resource": "arn:aws:lambda:eu-west-2:202506667107:function:clinic-frontdesk-managed-predictor"
+    }
+  ]
+}

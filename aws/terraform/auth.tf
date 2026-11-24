@@ -1,4 +1,5 @@
 resource "aws_cognito_user_pool" "clinic" {
+  tags                     = { Project = "clinic-frontdesk-managed" }
   name                     = "clinic-frontdesk-managed"
   auto_verified_attributes = ["email"]
   username_attributes      = ["email"]
