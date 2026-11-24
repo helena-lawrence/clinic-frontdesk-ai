@@ -15,7 +15,9 @@ RUN python -m pip install --no-cache-dir -r requirements.container.txt
 # Only runtime code and the public AWS trust certificate are copied.
 # No .env, AWS credentials, local ML models, or project history.
 COPY --chown=clinic:clinic app/ ./app/
+COPY --chown=clinic:clinic scripts/ ./scripts/
 COPY --chown=clinic:clinic certs/global-bundle.pem ./certs/global-bundle.pem
+RUN mkdir -p /srv/clinic/data && chown clinic:clinic /srv/clinic/data
 
 USER clinic
 EXPOSE 8000

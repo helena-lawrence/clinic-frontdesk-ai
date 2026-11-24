@@ -1,0 +1,4 @@
+# The first infrastructure apply uses enable_services=false and no image tag.
+# After both images are pushed, use enable_services=true and the commit SHA.
+enable_services = false
+image_tag       = ""

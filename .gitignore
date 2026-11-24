@@ -1,0 +1,24 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+.pytest_cache/
+data/clinic.db*
+.env
+.env.*
+!.env.example
+
+
+.aws/
+*.joblib
+*.pkl
+*.log
+reports/
+
+# Terraform provider downloads, local state, and private inputs.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+!*.tfvars.example

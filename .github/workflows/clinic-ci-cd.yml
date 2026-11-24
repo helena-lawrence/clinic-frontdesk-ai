@@ -6,146 +6,217 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      bootstrap:
+        description: Create the fresh AWS foundation before publishing images
+        type: boolean
+        default: false
+        required: true
+      patient_email:
+        description: Optional email to invite and link to synthetic patient P001
+        type: string
+        required: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: clinic-${{ github.workflow }}-${{ github.ref }}
+  group: clinic-production
   cancel-in-progress: false
 
 env:
   AWS_REGION: eu-west-2
-  API_ECR_REPO: clinic-frontdesk-api
-  UI_ECR_REPO: clinic-frontdesk-ui
+  TF_DIR: aws/terraform
+  API_ECR_REPO: clinic-frontdesk-managed-api
+  UI_ECR_REPO: clinic-frontdesk-managed-ui
+  PREDICTOR_ECR_REPO: clinic-frontdesk-managed-predictor
 
 jobs:
   validate:
-    name: Validate Python and build both images
     runs-on: ubuntu-latest
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Install Python 3.12
-        uses: actions/setup-python@v6
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
-
       - name: Reject tracked local secrets
         shell: bash
         run: |
           set -euo pipefail
           if git ls-files --error-unmatch .env >/dev/null 2>&1; then
-            echo 'ERROR: .env is tracked by Git. Remove it from git before publishing.' >&2
+            echo '.env must not be tracked.' >&2
             exit 1
           fi
           if git ls-files | grep -Eq '(^|/)\.aws/|\.(p12|pfx|key)$'; then
-            echo 'ERROR: A potential credential file is tracked by Git.' >&2
+            echo 'A potential credential file is tracked.' >&2
             exit 1
           fi
+      - run: python -m compileall -q app scripts
+      - run: docker build --file Dockerfile.api --tag clinic-api:ci .
+      - run: docker build --file Dockerfile.ui --tag clinic-ui:ci .
 
-      - name: Check Python syntax
-        run: |
-          python -m compileall -q app scripts
-
-      - name: Check for Docker files
-        run: |
-          test -f Dockerfile.api
-          test -f Dockerfile.ui
-          test -f requirements.container.txt
-          test -f certs/global-bundle.pem
-
-      - name: Build API container
-        run: docker build --file Dockerfile.api --tag clinic-api:ci .
-
-      - name: Build UI container
-        run: docker build --file Dockerfile.ui --tag clinic-ui:ci .
-
-  publish:
-    name: Publish Docker images to Amazon ECR
-    needs: validate
-    if: >-
-      github.ref == 'refs/heads/main' &&
-      vars.ENABLE_ECR_PUBLISH == 'true' &&
-      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+  terraform_validate:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    outputs:
-      api_image: ${{ steps.images.outputs.api_image }}
-      ui_image: ${{ steps.images.outputs.ui_image }}
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Assume ECR publisher role with GitHub OIDC
-        uses: aws-actions/configure-aws-credentials@v6
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v4
         with:
-          role-to-assume: ${{ vars.AWS_PUBLISH_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-          role-session-name: clinic-publish
+          terraform_version: 1.17.2
+      - run: terraform fmt -check
+        working-directory: aws/terraform
+      - run: terraform init -backend=false -input=false
+        working-directory: aws/terraform
+      - run: terraform validate
+        working-directory: aws/terraform
 
-      - name: Authenticate to Amazon ECR
-        id: ecr
-        uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Build and push commit-tagged images
-        id: images
-        shell: bash
-        env:
-          REGISTRY: ${{ steps.ecr.outputs.registry }}
-        run: |
-          set -euo pipefail
-          API_IMAGE="${REGISTRY}/${API_ECR_REPO}:${GITHUB_SHA}"
-          UI_IMAGE="${REGISTRY}/${UI_ECR_REPO}:${GITHUB_SHA}"
-
-          docker build --file Dockerfile.api --tag "$API_IMAGE" .
-          docker build --file Dockerfile.ui --tag "$UI_IMAGE" .
-          docker push "$API_IMAGE"
-          docker push "$UI_IMAGE"
-
-          echo "api_image=$API_IMAGE" >> "$GITHUB_OUTPUT"
-          echo "ui_image=$UI_IMAGE" >> "$GITHUB_OUTPUT"
-          echo 'Both commit-tagged images were pushed to ECR.'
-
-  deploy:
-    name: Deploy approved version to ECS Fargate
-    needs: publish
-    if: >-
-      github.ref == 'refs/heads/main' &&
-      vars.ENABLE_ECS_DEPLOY == 'true'
+  foundation:
+    needs: [validate, terraform_validate]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.bootstrap == true
     runs-on: ubuntu-latest
     environment: production
     permissions:
       contents: read
       id-token: write
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Assume ECS deployer role with GitHub OIDC
-        uses: aws-actions/configure-aws-credentials@v6
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v4
         with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          terraform_version: 1.17.2
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_TERRAFORM_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: clinic-foundation
+      - name: Create Terraform-managed AWS foundation
+        working-directory: aws/terraform
+        run: |
+          terraform init -input=false
+          if terraform state list | grep -q '^aws_ecs_service\.'; then
+            echo 'Services already exist. Run a normal deployment instead of bootstrap.' >&2
+            exit 1
+          fi
+          terraform apply -input=false -auto-approve -var='enable_services=false'
+          terraform output https_url
+
+  publish:
+    needs: [validate, terraform_validate, foundation]
+    if: >-
+      always() && github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      (vars.ENABLE_ECS_DEPLOY == 'true' || inputs.bootstrap == true) &&
+      needs.validate.result == 'success' &&
+      needs.terraform_validate.result == 'success' &&
+      (needs.foundation.result == 'success' || needs.foundation.result == 'skipped')
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_TERRAFORM_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: clinic-publish
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: ecr
+      - name: Train a fresh synthetic predictor artifact
+        run: |
+          python -m pip install -r deployment/ml_lambda/requirements.txt
+          python scripts/generate_no_show_data.py
+          python -m app.ml.train_model
+          cp app/ml/models/no_show_model.joblib deployment/ml_lambda/no_show_model.joblib
+      - name: Push commit-tagged images
+        shell: bash
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          set -euo pipefail
+          push_if_missing() {
+            local repo="$1" dockerfile="$2" context="$3"
+            if aws ecr describe-images --repository-name "$repo" --image-ids "imageTag=$GITHUB_SHA" >/dev/null 2>&1; then
+              echo "$repo:$GITHUB_SHA already exists"
+              return
+            fi
+            docker build -f "$dockerfile" -t "$REGISTRY/$repo:$GITHUB_SHA" "$context"
+            docker push "$REGISTRY/$repo:$GITHUB_SHA"
+          }
+          push_if_missing "$API_ECR_REPO" Dockerfile.api .
+          push_if_missing "$UI_ECR_REPO" Dockerfile.ui .
+          push_if_missing "$PREDICTOR_ECR_REPO" deployment/ml_lambda/Dockerfile deployment/ml_lambda
+
+  deploy:
+    needs: publish
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.17.2
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_TERRAFORM_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
           role-session-name: clinic-deploy
-
-      - name: Deploy API service
+      - name: Create or update ECS services and predictor
+        working-directory: aws/terraform
+        run: |
+          terraform init -input=false
+          terraform apply -input=false -auto-approve -var='enable_services=true' -var="image_tag=$GITHUB_SHA"
+          terraform output https_url
+      - name: Initialize the new database once
+        if: github.event_name == 'workflow_dispatch' && inputs.bootstrap == true
         shell: bash
-        env:
-          CLUSTER: ${{ vars.ECS_CLUSTER }}
-          SERVICE: ${{ vars.ECS_API_SERVICE }}
-          CONTAINER: ${{ vars.ECS_API_CONTAINER }}
-          IMAGE_URI: ${{ needs.publish.outputs.api_image }}
-        run: bash .github/scripts/deploy-ecs-service.sh
-
-      - name: Deploy UI service
+        working-directory: aws/terraform
+        run: |
+          set -euo pipefail
+          CLUSTER=$(terraform output -raw ecs_cluster_name)
+          TASK=$(terraform output -raw init_task_definition_arn)
+          SG=$(terraform output -raw task_security_group_id)
+          SUBNETS=$(terraform output -json task_subnet_ids | jq -r 'join(",")')
+          NETWORK="awsvpcConfiguration={subnets=[$SUBNETS],securityGroups=[$SG],assignPublicIp=ENABLED}"
+          TASK_ARN=$(aws ecs run-task --cluster "$CLUSTER" --launch-type FARGATE --task-definition "$TASK" --network-configuration "$NETWORK" --query 'tasks[0].taskArn' --output text)
+          test "$TASK_ARN" != None
+          aws ecs wait tasks-stopped --cluster "$CLUSTER" --tasks "$TASK_ARN"
+          EXIT_CODE=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$TASK_ARN" --query 'tasks[0].containers[0].exitCode' --output text)
+          test "$EXIT_CODE" = 0
+      - name: Invite and link a synthetic demo patient
+        if: github.event_name == 'workflow_dispatch' && inputs.patient_email != ''
         shell: bash
+        working-directory: aws/terraform
         env:
-          CLUSTER: ${{ vars.ECS_CLUSTER }}
-          SERVICE: ${{ vars.ECS_UI_SERVICE }}
-          CONTAINER: ${{ vars.ECS_UI_CONTAINER }}
-          IMAGE_URI: ${{ needs.publish.outputs.ui_image }}
-        run: bash .github/scripts/deploy-ecs-service.sh
+          PATIENT_EMAIL: ${{ inputs.patient_email }}
+        run: |
+          set -euo pipefail
+          POOL=$(terraform output -raw cognito_user_pool_id)
+          if ! aws cognito-idp admin-get-user --user-pool-id "$POOL" --username "$PATIENT_EMAIL" >/dev/null 2>&1; then
+            aws cognito-idp admin-create-user --user-pool-id "$POOL" --username "$PATIENT_EMAIL" --user-attributes "Name=email,Value=$PATIENT_EMAIL" --desired-delivery-mediums EMAIL >/dev/null
+          fi
+          SUB=$(aws cognito-idp admin-get-user --user-pool-id "$POOL" --username "$PATIENT_EMAIL" --query "UserAttributes[?Name=='sub'].Value | [0]" --output text)
+          test "$SUB" != None
+          CLUSTER=$(terraform output -raw ecs_cluster_name)
+          TASK=$(terraform output -raw init_task_definition_arn)
+          SG=$(terraform output -raw task_security_group_id)
+          SUBNETS=$(terraform output -json task_subnet_ids | jq -r 'join(",")')
+          NETWORK="awsvpcConfiguration={subnets=[$SUBNETS],securityGroups=[$SG],assignPublicIp=ENABLED}"
+          OVERRIDES=$(jq -n --arg pool "$POOL" --arg sub "$SUB" '{containerOverrides:[{name:"init",command:["python","-m","scripts.enroll_managed_patient"],environment:[{name:"COGNITO_USER_POOL_ID",value:$pool},{name:"COGNITO_SUB",value:$sub},{name:"PATIENT_ID",value:"P001"}]}]}')
+          TASK_ARN=$(aws ecs run-task --cluster "$CLUSTER" --launch-type FARGATE --task-definition "$TASK" --network-configuration "$NETWORK" --overrides "$OVERRIDES" --query 'tasks[0].taskArn' --output text)
+          test "$TASK_ARN" != None
+          aws ecs wait tasks-stopped --cluster "$CLUSTER" --tasks "$TASK_ARN"
+          EXIT_CODE=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$TASK_ARN" --query 'tasks[0].containers[0].exitCode' --output text)
+          test "$EXIT_CODE" = 0
+      - name: Wait for both ECS services
+        shell: bash
+        working-directory: aws/terraform
+        run: |
+          aws ecs wait services-stable --cluster "$(terraform output -raw ecs_cluster_name)" --services "$(terraform output -raw api_service_name)" "$(terraform output -raw ui_service_name)"
+          terraform output https_url

@@ -1,6 +1,7 @@
 """Clinic Front-Desk AI — professional chat and patient appointment dashboard."""
 
 import asyncio
+import os
 import sys
 
 import httpx
@@ -14,6 +15,9 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.agent.bedrock_mcp_agent import ask_agent
+
+API_INTERNAL_URL = os.getenv("CLINIC_API_INTERNAL_URL", "http://localhost:8000").rstrip("/")
+API_PUBLIC_URL = os.getenv("CLINIC_API_PUBLIC_URL", "http://localhost:8000").rstrip("/")
 
 st.set_page_config(
     page_title="Clinic Front-Desk AI",
@@ -119,7 +123,7 @@ def fetch_my_appointments(session_id: str):
     """Fetch only this Cognito session's appointments via FastAPI."""
     try:
         response = httpx.get(
-            "http://localhost:8000/auth/appointments",
+            API_INTERNAL_URL + "/auth/appointments",
             cookies={"clinic_demo_session": session_id},
             timeout=15.0,
             trust_env=False,
@@ -160,7 +164,7 @@ def _backend_get(session_id: str, route: str):
     """Call only our local authenticated FastAPI backend."""
     try:
         response = httpx.get(
-            "http://localhost:8000" + route,
+            API_INTERNAL_URL + route,
             cookies={"clinic_demo_session": session_id},
             timeout=25.0,
             trust_env=False,
@@ -183,7 +187,7 @@ def _backend_post(session_id: str, route: str, body: dict | None = None):
 
     try:
         response = httpx.post(
-            "http://localhost:8000" + route,
+            API_INTERNAL_URL + route,
             json=body if body is not None else {},
             cookies={"clinic_demo_session": session_id},
             headers={"X-CSRF-Token": csrf},
@@ -277,7 +281,7 @@ with st.sidebar:
     if session_id:
         try:
             response = httpx.get(
-                "http://localhost:8000/auth/me",
+                API_INTERNAL_URL + "/auth/me",
                 cookies={"clinic_demo_session": session_id},
                 timeout=5.0,
                 trust_env=False,
@@ -292,7 +296,7 @@ with st.sidebar:
         st.caption(f"Linked demo patient: {signed_in['patient_id']}")
         st.link_button(
             "Sign out",
-            "http://localhost:8000/auth/logout",
+            API_PUBLIC_URL + "/auth/logout",
             use_container_width=True,
         )
     else:
@@ -303,7 +307,7 @@ with st.sidebar:
         )
         st.link_button(
             "Sign in with AWS Cognito",
-            "http://localhost:8000/auth/start",
+            API_PUBLIC_URL + "/auth/start",
             use_container_width=True,
         )
         st.caption("Public chat mode: no patient records are shown.")
@@ -433,7 +437,7 @@ with appointments_tab:
 
     if not signed_in or not signed_in.get("authenticated"):
         st.info("Sign in with AWS Cognito to manage your appointments.")
-        st.link_button("Sign in with AWS Cognito", "http://localhost:8000/auth/start")
+        st.link_button("Sign in with AWS Cognito", API_PUBLIC_URL + "/auth/start")
     else:
         # Pending previews belong only to the current session.
         if st.session_state.get("patient_session") != session_id:

@@ -1,5 +1,6 @@
 
 import json
+import os
 
 import boto3
 from botocore.config import Config
@@ -7,7 +8,7 @@ from botocore.exceptions import ClientError, NoCredentialsError
 
 
 AWS_REGION = "eu-west-2"
-LAMBDA_FUNCTION = "clinic-no-show-predictor"
+LAMBDA_FUNCTION = os.getenv("CLINIC_PREDICTOR_FUNCTION", "clinic-no-show-predictor")
 
 
 def predict_no_show_cloud(features):

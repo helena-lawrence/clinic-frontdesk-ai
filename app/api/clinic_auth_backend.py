@@ -1,9 +1,4 @@
-"""Local-only Cognito sign-in bridge for the Clinic Front-Desk demo.
-
-Runs at http://localhost:8000. Uses the existing public Cognito app client
-with Authorization Code + PKCE. Access tokens remain in this Python process.
-Do not expose this service to the network or use it unchanged in production.
-"""
+"""Cognito sign-in bridge for the Clinic Front-Desk demo."""
 
 import base64
 import hashlib
@@ -42,8 +37,9 @@ from app.core.request_logging import install_request_logging
 install_request_logging(app)
 
 COGNITO_DOMAIN = os.environ["COGNITO_DOMAIN"].rstrip("/")
-REDIRECT_URI = "http://localhost:8000/auth/callback"
-STREAMLIT_URL = "http://localhost:8502/"
+REDIRECT_URI = os.getenv("COGNITO_REDIRECT_URI", "http://localhost:8000/auth/callback")
+STREAMLIT_URL = os.getenv("CLINIC_UI_URL", "http://localhost:8502/")
+SECURE_COOKIES = urlsplit(REDIRECT_URI).scheme == "https"
 STATE_COOKIE = "clinic_demo_oauth_state"
 SESSION_COOKIE = "clinic_demo_session"
 
@@ -51,15 +47,12 @@ parsed = urlsplit(COGNITO_DOMAIN)
 if parsed.scheme != "https" or not parsed.netloc or parsed.path or parsed.query or parsed.fragment:
     raise RuntimeError("COGNITO_DOMAIN must be an HTTPS domain without a path")
 
-if os.getenv("COGNITO_REDIRECT_URI") != REDIRECT_URI:
-    raise RuntimeError(
-        "COGNITO_REDIRECT_URI must equal http://localhost:8000/auth/callback"
-    )
+if urlsplit(REDIRECT_URI).path != "/auth/callback":
+    raise RuntimeError("COGNITO_REDIRECT_URI must end in /auth/callback")
 
 _issuer, CLIENT_ID, _unused = get_auth_config()
 
-# These dictionaries live only in the local backend process. Restarting it
-# deliberately logs everyone out. Values are never sent to Streamlit or LLMs.
+# These dictionaries live only in this process. A restart logs everyone out.
 _pending: dict[str, tuple[str, float]] = {}
 _sessions: dict[str, tuple[str, float]] = {}
 _csrf_tokens: dict[str, str] = {}
@@ -115,7 +108,7 @@ def start_login():
         value=state,
         max_age=600,
         httponly=True,
-        secure=False,  # localhost development only; HTTPS requires True.
+        secure=SECURE_COOKIES,
         samesite="lax",
         path="/auth",
     )
@@ -185,7 +178,7 @@ def cognito_callback(
         value=session_id,
         max_age=1800,
         httponly=True,
-        secure=False,  # localhost development only.
+        secure=SECURE_COOKIES,
         samesite="lax",
         path="/",
     )
