@@ -1,0 +1,151 @@
+name: Clinic Front Desk - CI/CD
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: clinic-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: eu-west-2
+  API_ECR_REPO: clinic-frontdesk-api
+  UI_ECR_REPO: clinic-frontdesk-ui
+
+jobs:
+  validate:
+    name: Validate Python and build both images
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Reject tracked local secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git ls-files --error-unmatch .env >/dev/null 2>&1; then
+            echo 'ERROR: .env is tracked by Git. Remove it from git before publishing.' >&2
+            exit 1
+          fi
+          if git ls-files | grep -Eq '(^|/)\.aws/|\.(p12|pfx|key)$'; then
+            echo 'ERROR: A potential credential file is tracked by Git.' >&2
+            exit 1
+          fi
+
+      - name: Check Python syntax
+        run: |
+          python -m compileall -q app scripts
+
+      - name: Check for Docker files
+        run: |
+          test -f Dockerfile.api
+          test -f Dockerfile.ui
+          test -f requirements.container.txt
+          test -f certs/global-bundle.pem
+
+      - name: Build API container
+        run: docker build --file Dockerfile.api --tag clinic-api:ci .
+
+      - name: Build UI container
+        run: docker build --file Dockerfile.ui --tag clinic-ui:ci .
+
+  publish:
+    name: Publish Docker images to Amazon ECR
+    needs: validate
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      vars.ENABLE_ECR_PUBLISH == 'true' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      api_image: ${{ steps.images.outputs.api_image }}
+      ui_image: ${{ steps.images.outputs.ui_image }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Assume ECR publisher role with GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_PUBLISH_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: clinic-publish
+
+      - name: Authenticate to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push commit-tagged images
+        id: images
+        shell: bash
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          set -euo pipefail
+          API_IMAGE="${REGISTRY}/${API_ECR_REPO}:${GITHUB_SHA}"
+          UI_IMAGE="${REGISTRY}/${UI_ECR_REPO}:${GITHUB_SHA}"
+
+          docker build --file Dockerfile.api --tag "$API_IMAGE" .
+          docker build --file Dockerfile.ui --tag "$UI_IMAGE" .
+          docker push "$API_IMAGE"
+          docker push "$UI_IMAGE"
+
+          echo "api_image=$API_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "ui_image=$UI_IMAGE" >> "$GITHUB_OUTPUT"
+          echo 'Both commit-tagged images were pushed to ECR.'
+
+  deploy:
+    name: Deploy approved version to ECS Fargate
+    needs: publish
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      vars.ENABLE_ECS_DEPLOY == 'true'
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Assume ECS deployer role with GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: clinic-deploy
+
+      - name: Deploy API service
+        shell: bash
+        env:
+          CLUSTER: ${{ vars.ECS_CLUSTER }}
+          SERVICE: ${{ vars.ECS_API_SERVICE }}
+          CONTAINER: ${{ vars.ECS_API_CONTAINER }}
+          IMAGE_URI: ${{ needs.publish.outputs.api_image }}
+        run: bash .github/scripts/deploy-ecs-service.sh
+
+      - name: Deploy UI service
+        shell: bash
+        env:
+          CLUSTER: ${{ vars.ECS_CLUSTER }}
+          SERVICE: ${{ vars.ECS_UI_SERVICE }}
+          CONTAINER: ${{ vars.ECS_UI_CONTAINER }}
+          IMAGE_URI: ${{ needs.publish.outputs.ui_image }}
+        run: bash .github/scripts/deploy-ecs-service.sh
