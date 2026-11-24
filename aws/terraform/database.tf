@@ -17,7 +17,7 @@ resource "aws_db_instance" "clinic" {
   db_subnet_group_name        = aws_db_subnet_group.clinic.name
   vpc_security_group_ids      = [aws_security_group.database.id]
   publicly_accessible         = false
-  backup_retention_period     = 7
+  backup_retention_period     = 1
   deletion_protection         = true
   skip_final_snapshot         = false
   final_snapshot_identifier   = "clinic-frontdesk-managed-db-final"
