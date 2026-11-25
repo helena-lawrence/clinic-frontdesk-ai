@@ -12,6 +12,10 @@ on:
         type: boolean
         default: false
         required: true
+      resume_bootstrap:
+        description: Resume a partial first deployment and initialize the database
+        type: boolean
+        default: false
       patient_email:
         description: Optional email to invite and link to synthetic patient P001
         type: string
@@ -35,6 +39,11 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
+      - name: Check first deployment options
+        if: github.event_name == 'workflow_dispatch' && inputs.bootstrap && inputs.resume_bootstrap
+        run: |
+          echo "Select either bootstrap or resume_bootstrap." >&2
+          exit 1
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v6
         with:
@@ -92,7 +101,7 @@ jobs:
         run: |
           terraform init -input=false
           if terraform state list | grep -q '^aws_ecs_service\.'; then
-            echo 'Services already exist. Run a normal deployment instead of bootstrap.' >&2
+            echo 'Services already exist. Use resume_bootstrap if database initialization is still pending.' >&2
             exit 1
           fi
           terraform apply -input=false -auto-approve -var='enable_services=false'
@@ -103,7 +112,7 @@ jobs:
     if: >-
       always() && github.ref == 'refs/heads/main' &&
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
-      (vars.ENABLE_ECS_DEPLOY == 'true' || inputs.bootstrap == true) &&
+      (vars.ENABLE_ECS_DEPLOY == 'true' || inputs.bootstrap == true || inputs.resume_bootstrap == true) &&
       needs.validate.result == 'success' &&
       needs.terraform_validate.result == 'success' &&
       (needs.foundation.result == 'success' || needs.foundation.result == 'skipped')
@@ -138,16 +147,18 @@ jobs:
           set -euo pipefail
           push_if_missing() {
             local repo="$1" dockerfile="$2" context="$3"
+            shift 3
             if aws ecr describe-images --repository-name "$repo" --image-ids "imageTag=$GITHUB_SHA" >/dev/null 2>&1; then
               echo "$repo:$GITHUB_SHA already exists"
               return
             fi
-            docker build -f "$dockerfile" -t "$REGISTRY/$repo:$GITHUB_SHA" "$context"
+            docker buildx build --load "$@" -f "$dockerfile" -t "$REGISTRY/$repo:$GITHUB_SHA" "$context"
             docker push "$REGISTRY/$repo:$GITHUB_SHA"
           }
           push_if_missing "$API_ECR_REPO" Dockerfile.api .
           push_if_missing "$UI_ECR_REPO" Dockerfile.ui .
-          push_if_missing "$PREDICTOR_ECR_REPO" deployment/ml_lambda/Dockerfile deployment/ml_lambda
+          push_if_missing "$PREDICTOR_ECR_REPO" deployment/ml_lambda/Dockerfile deployment/ml_lambda \
+            --platform linux/amd64 --provenance=false --sbom=false
 
   deploy:
     needs: publish
@@ -174,7 +185,7 @@ jobs:
           terraform apply -input=false -auto-approve -var='enable_services=true' -var="image_tag=$GITHUB_SHA"
           terraform output https_url
       - name: Initialize the new database once
-        if: github.event_name == 'workflow_dispatch' && inputs.bootstrap == true
+        if: github.event_name == 'workflow_dispatch' && (inputs.bootstrap == true || inputs.resume_bootstrap == true)
         shell: bash
         working-directory: aws/terraform
         run: |

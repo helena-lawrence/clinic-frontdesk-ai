@@ -32,8 +32,10 @@
         "logs:PutLogEvents"
       ],
       "Resource": [
-        "arn:aws:logs:eu-west-2:202506667107:log-group:/ecs/clinic-frontdesk-managed/*:log-stream:*",
-        "arn:aws:logs:eu-west-2:202506667107:log-group:/aws/lambda/clinic-frontdesk-managed-predictor:log-stream:*"
+        "arn:aws:logs:eu-west-2:202506667107:log-group:/ecs/clinic-frontdesk-managed/api:*",
+        "arn:aws:logs:eu-west-2:202506667107:log-group:/ecs/clinic-frontdesk-managed/ui:*",
+        "arn:aws:logs:eu-west-2:202506667107:log-group:/ecs/clinic-frontdesk-managed/init:*",
+        "arn:aws:logs:eu-west-2:202506667107:log-group:/aws/lambda/clinic-frontdesk-managed-predictor:*"
       ]
     },
     {
