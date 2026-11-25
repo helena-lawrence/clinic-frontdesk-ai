@@ -57,7 +57,7 @@ jobs:
       - name: Plan deletion from the production state
         run: |
           cp teardown/teardown_override.tf ./teardown_override.tf
-          terraform init -lockfile=readonly
+          terraform init -input=false
           terraform plan -destroy -lock-timeout=5m -out="$RUNNER_TEMP/destroy.plan"
       - name: Generate IAM permissions for review
         if: inputs.operation == 'preview'
