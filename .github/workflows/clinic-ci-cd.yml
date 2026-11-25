@@ -162,6 +162,8 @@ jobs:
 
   deploy:
     needs: publish
+    # Resume runs skip foundation, so check the publish result explicitly.
+    if: ${{ !cancelled() && needs.publish.result == 'success' }}
     runs-on: ubuntu-latest
     environment: production
     permissions:
