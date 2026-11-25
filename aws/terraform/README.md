@@ -14,6 +14,13 @@ The only bootstrap resources reused are the existing S3 state bucket `clinic-fro
 
 If `bootstrap=true` is run after services already exist, the workflow stops before applying `enable_services=false`; this prevents it from tearing down live services.
 
+## Delete the Terraform-managed stack
+
+1. Set the GitHub repository variable `ENABLE_ECS_DEPLOY=false` before pushing the teardown workflow to `main` if you want subsequent pushes to run validation only.
+2. In **Actions → Clinic Front Desk - Terraform teardown → Run workflow**, select `main` and `preview`. The job reads the production S3 state and prints the proposed deletions. Its **Generate IAM permissions for review** step produces an IAM Policy Autopilot report from that plan. The existing deploy policies cover provisioning and omit several delete actions. Review the generated permissions, scope them to the listed clinic resources and attach the required supplemental permissions to `ClinicGitHubTerraformRole` before running `destroy`. Each customer-managed policy can contain up to 6,144 non-whitespace characters.
+3. When ready to remove the stack, run the same workflow with `destroy` and enter `DELETE clinic-frontdesk-managed`. This deletes the managed PostgreSQL database **without a final snapshot**, Cognito users, ECR repositories and images, log groups, and the remaining infrastructure in this state. The original manually created database, Terraform S3 backend, GitHub role and other bootstrap resources are outside this state.
+4. Look for **Teardown complete** in the run summary. After a partial failure, correct the reported error and start a new preview or destroy run. Terraform uses the latest state on each run. You can remove the supplemental teardown permissions after completion.
+
 ## Notes
 
 - PostgreSQL starts empty. The initialization task generates synthetic demo data inside the new deployment; it does not copy from the old database.

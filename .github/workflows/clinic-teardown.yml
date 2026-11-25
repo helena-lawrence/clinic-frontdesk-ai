@@ -1,0 +1,75 @@
+name: Clinic Front Desk - Terraform teardown
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Preview the production teardown or delete the stack and its data
+        type: choice
+        options: [preview, destroy]
+        default: preview
+        required: true
+      confirmation:
+        description: For destroy, type DELETE clinic-frontdesk-managed (includes DB, users and images)
+        type: string
+        required: false
+
+concurrency:
+  group: clinic-production
+  cancel-in-progress: false
+
+jobs:
+  teardown:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        shell: bash
+        working-directory: aws/terraform
+    env:
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check deletion confirmation
+        if: inputs.operation == 'destroy'
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          if [[ "$CONFIRMATION" != "DELETE clinic-frontdesk-managed" ]]; then
+            echo "::error::Type DELETE clinic-frontdesk-managed to authorize deletion."
+            exit 1
+          fi
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.17.2
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-region: eu-west-2
+          allowed-account-ids: "202506667107"
+          role-to-assume: ${{ vars.AWS_TERRAFORM_ROLE_ARN }}
+          role-session-name: clinic-teardown
+      - name: Plan deletion from the production state
+        run: |
+          cp teardown/teardown_override.tf ./teardown_override.tf
+          terraform init -lockfile=readonly
+          terraform plan -destroy -lock-timeout=5m -out="$RUNNER_TEMP/destroy.plan"
+      - name: Generate IAM permissions for review
+        if: inputs.operation == 'preview'
+        run: |
+          umask 077
+          terraform show -json "$RUNNER_TEMP/destroy.plan" > "$RUNNER_TEMP/clinic-plan.json"
+          if jq -e 'any(.resource_changes[]?; .mode == "managed" and .change.actions == ["delete"])' "$RUNNER_TEMP/clinic-plan.json" >/dev/null; then
+            python3 -m venv "$RUNNER_TEMP/iam-tools"
+            "$RUNNER_TEMP/iam-tools/bin/pip" install --quiet 'iam-policy-autopilot==0.4.0'
+            "$RUNNER_TEMP/iam-tools/bin/iam-policy-autopilot" generate-policies "$RUNNER_TEMP/clinic-plan.json" \
+              --region eu-west-2 --account 202506667107 --pretty
+          fi
+      - name: Prepare existing resources and apply the destroy plan
+        if: inputs.operation == 'destroy'
+        run: bash ../../.github/scripts/teardown-clinic.sh
