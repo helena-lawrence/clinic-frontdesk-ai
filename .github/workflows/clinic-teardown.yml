@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       operation:
-        description: Preview the production teardown or delete the stack and its data
+        description: Preview, repair the missing clinic secret entry and preview, or destroy
         type: choice
-        options: [preview, destroy]
+        options: [preview, repair-and-preview, destroy]
         default: preview
         required: true
       confirmation:
@@ -54,13 +54,35 @@ jobs:
           allowed-account-ids: "202506667107"
           role-to-assume: ${{ vars.AWS_TERRAFORM_ROLE_ARN }}
           role-session-name: clinic-teardown
-      - name: Plan deletion from the production state
+      - name: Initialize the production state
         run: |
           cp teardown/teardown_override.tf ./teardown_override.tf
           terraform init -input=false
-          terraform plan -destroy -lock-timeout=5m -out="$RUNNER_TEMP/destroy.plan"
+      - name: Forget the confirmed missing secret rotation entry
+        if: inputs.operation == 'repair-and-preview'
+        run: |
+          set -euo pipefail
+          rotation=aws_secretsmanager_secret_rotation.clinic_master
+          # CloudShell independently confirmed ResourceNotFoundException for this exact ARN.
+          missing_secret='arn:aws:secretsmanager:eu-west-2:202506667107:secret:rds!db-5826ae7c-d34b-46b1-9467-6ce7781b516f-BDiAPy'
+          addresses=$(terraform state list)
+          if ! grep -Fxq "$rotation" <<< "$addresses"; then
+            echo "Rotation entry already absent. Continuing to preview."
+            exit 0
+          fi
+          tracked=$(terraform state list -id="$missing_secret" "$rotation")
+          db_count=$(aws rds describe-db-instances --region eu-west-2 \
+            --filters Name=db-instance-id,Values=clinic-frontdesk-managed-db \
+            --query 'length(DBInstances)' --output text)
+          if [[ "$tracked" != "$rotation" || "$db_count" != 0 ]]; then
+            echo "::error::The secret binding or database no longer matches the confirmed missing resources."
+            exit 1
+          fi
+          terraform state rm -lock-timeout=5m "$rotation"
+      - name: Plan deletion from the production state
+        run: terraform plan -destroy -lock-timeout=5m -out="$RUNNER_TEMP/destroy.plan"
       - name: Generate IAM permissions for review
-        if: inputs.operation == 'preview'
+        if: inputs.operation == 'preview' || inputs.operation == 'repair-and-preview'
         run: |
           umask 077
           terraform show -json "$RUNNER_TEMP/destroy.plan" > "$RUNNER_TEMP/clinic-plan.json"
